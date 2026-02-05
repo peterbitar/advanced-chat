@@ -3,7 +3,7 @@ import { tool } from "ai";
 import { track } from "@vercel/analytics/server";
 
 function safeTrack(event: string, data?: Record<string, unknown>): Promise<void> {
-  return process.env.VERCEL_URL ? track(event, data) : Promise.resolve();
+  return process.env.VERCEL_URL ? track(event, data as Record<string, string | number | boolean | null> | undefined) : Promise.resolve();
 }
 import { Daytona } from '@daytonaio/sdk';
 import { randomUUID } from 'crypto';
