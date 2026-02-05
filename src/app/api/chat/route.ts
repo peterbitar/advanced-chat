@@ -95,7 +95,7 @@ export async function POST(req: Request) {
     const providerOptions = {
       openai: isUsingLocalProvider
         ? { think: supportsThinking }
-        : { store: true, reasoningEffort: 'medium', reasoningSummary: 'auto', include: ['reasoning.encrypted_content'] }
+        : { store: true, reasoningEffort: 'low', reasoningSummary: 'auto', include: ['reasoning.encrypted_content'] }
     };
 
     // Save user message immediately before streaming
