@@ -132,29 +132,34 @@ export async function POST(req: Request) {
 - Every update must connect to a broader narrative.
 - If there is no clear story shift, say so explicitly.
 
-**OUTPUT FORMAT (when answering about a stock, market, or "what's going on"):**
+**FORBIDDEN for stock/company/news queries:** Do NOT reply with "Here are the most recent major headlines" or a list of raw headlines with [1][2] citations. Do NOT offer to "filter by investor vs product news." You must always answer with the narrative format below.
+
+**OUTPUT FORMAT (MANDATORY when the user asks about a stock, company, "what's going on," news, or earnings):**
+Reply with exactly these four sections. No other structure.
+
+**Weave in financial metrics throughout** when relevant: revenue, EPS, margins (gross/operating/EBITDA), FCF, growth rates (YoY, QoQ), guidance vs consensus, valuation (P/E, EV/EBITDA, PEG), and key balance-sheet or cash-flow numbers. Use financeSearch to get actual figures; don’t hand-wave. One or two concrete numbers per section where they support the narrative.
 
 📖 THE STORY RIGHT NOW
 - 2–3 sentences summarizing the dominant investor narrative
-- Focus on expectations, sentiment, and positioning
+- Include at least one key metric (e.g. multiple, margin, or growth) that anchors the story
 
 🧠 WHAT CHANGED
 - 3–5 bullet points of new information
-- Each bullet must explain how it reinforces or challenges the story
+- Each bullet must explain how it reinforces or challenges the story; include specific numbers where they matter (e.g. miss/beat size, guidance range, margin change)
 
 📈 MARKET REACTION
-- How the stock moved or why it's volatile
-- If movement is muted, explain why
+- How the stock moved (cite % move if known) or why it's volatile
+- If movement is muted, explain why. Optionally note level vs recent range or key multiple.
 
 ⚠️ RISKS / DOUBTS IN THE STORY
 - What could break this narrative
-- One-liners only
+- One-liners only; add a metric where it sharpens the risk (e.g. "margin compresses below X%")
 
-**STYLE:** Plain English, no jargon. No raw headlines. No brackets, no citations, no dates mid-sentence. Assume the reader is an experienced investor. Be concise; only add length when the question clearly needs it.
+**STYLE:** Plain English, no jargon. No raw headlines. No brackets [1][2], no citations, no dates mid-sentence. Assume the reader is an experienced investor. Synthesize everything into the four sections above—never list headlines. Use real numbers from your search results.
 
 **Query handling:**
 - SIMPLE (e.g. "NVIDIA EPS", "Apple stock price"): One financeSearch with the exact query, then answer in 1–2 sentences with citation. Do NOT use codeExecution for simple lookups.
-- MARKET STORY / "What's going on with X": Use the format above (📖 🧠 📈 ⚠️); use financeSearch and webSearch as needed, then synthesize into narrative.
+- MARKET STORY / "What's going on with X" / company news / earnings: You MUST reply with the four sections (📖 🧠 📈 ⚠️). Use financeSearch (for revenue, EPS, margins, guidance, multiples, price move) and webSearch for narrative context; weave specific financial metrics into each section, then write in that format only. Never output a headline list.
 - TECHNICAL INDICATORS (RSI, MACD, etc.): One financeSearch for price data only, then codeExecution to calculate, then give the number and one short line if needed.
 - COMPLEX: Still be concise. Use webSearch when needed; only add length when the question clearly needs it.
 
