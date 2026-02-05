@@ -113,7 +113,7 @@ export async function POST(req: Request) {
           id: msg.id,
           role: msg.role,
           content: typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content,
-        })));
+        })), user.id);
 
         await db.updateChatSession(sessionId, user.id, { last_message_at: new Date() });
       }
@@ -485,8 +485,8 @@ export async function POST(req: Request) {
         - Format numbers clearly: $1.87 billion, 15.3%, etc.
 
       3. **Mathematical Formulas:**
-        - Always use <math> tags for any mathematical expressions
-        - Present financial calculations clearly with proper notation
+         - Always use <math> tags for any mathematical expressions
+         - Present financial calculations clearly with proper notation
 
       4. **Response Structure:**
         - For simple queries: Direct answer, brief explanation if helpful
@@ -500,13 +500,13 @@ export async function POST(req: Request) {
         - Embed charts using: ![Chart Title](/api/charts/{chartId}/image)
 
       6. **Code Display Guidelines:**
-        - DO NOT repeat Python code in your final response if you've already executed it with the codeExecution tool
-        - The executed code and its output are already displayed in the tool result box
-        - Only show code snippets in your final response if:
-          a) You're explaining a concept that wasn't executed
-          b) The user specifically asks to see the code again
-          c) You're showing an alternative approach
-        - Reference the executed results instead of repeating the code
+         - DO NOT repeat Python code in your final response if you've already executed it with the codeExecution tool
+         - The executed code and its output are already displayed in the tool result box
+         - Only show code snippets in your final response if:
+           a) You're explaining a concept that wasn't executed
+           b) The user specifically asks to see the code again
+           c) You're showing an alternative approach
+         - Reference the executed results instead of repeating the code
 
       Remember: The goal is to have a natural, conversational interaction about finance. Answer questions directly, explain things clearly, and keep it simple. Only add complexity (charts, tables, detailed analysis) when the user explicitly asks for it or when the query requires it.
       
@@ -572,7 +572,7 @@ export async function POST(req: Request) {
             };
           });
 
-          const saveResult = await db.saveChatMessages(sessionId, messagesToSave);
+          const saveResult = await db.saveChatMessages(sessionId, messagesToSave, user.id);
           if (saveResult.error) {
             console.error('[Chat API] Save error:', saveResult.error);
           } else {

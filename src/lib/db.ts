@@ -278,12 +278,54 @@ export async function saveChatMessages(
     role: string;
     content: any;
     processing_time_ms?: number;
-  }>
+  }>,
+  userId?: string
 ) {
   console.log('[DB] saveChatMessages called - sessionId:', sessionId, 'messageCount:', messages.length);
 
   if (isSelfHostedMode()) {
     const db = getLocalDb();
+
+    // Ensure session exists before saving messages (fixes FOREIGN KEY constraint)
+    const existingSession = await db
+      .select()
+      .from(schema.chatSessions)
+      .where(eq(schema.chatSessions.id, sessionId))
+      .limit(1);
+
+    if (existingSession.length === 0) {
+      // Session doesn't exist, create it
+      const sessionUserId = userId || DEV_USER_ID;
+      const firstUserMessage = messages.find(m => m.role === 'user');
+      let title = 'New Chat';
+      
+      if (firstUserMessage) {
+        if (typeof firstUserMessage.content === 'string') {
+          try {
+            const parsed = JSON.parse(firstUserMessage.content);
+            if (Array.isArray(parsed)) {
+              const textPart = parsed.find((p: any) => p.type === 'text');
+              title = textPart?.text || title;
+            } else {
+              title = firstUserMessage.content;
+            }
+          } catch {
+            title = firstUserMessage.content;
+          }
+        } else if (Array.isArray(firstUserMessage.content)) {
+          const textPart = firstUserMessage.content.find((p: any) => p.type === 'text');
+          title = textPart?.text || title;
+        }
+        title = title.substring(0, 100);
+      }
+      
+      console.log('[DB] Creating missing session:', sessionId, 'for user:', sessionUserId, 'title:', title);
+      await db.insert(schema.chatSessions).values({
+        id: sessionId,
+        userId: sessionUserId,
+        title: title,
+      });
+    }
 
     // Delete existing messages
     await db
