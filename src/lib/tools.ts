@@ -23,7 +23,15 @@ async function callValyuOAuthProxy(requestBody: Record<string, any>, valyuAccess
   const response = await fetch(VALYU_OAUTH_PROXY_URL, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${valyuAccessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: '/v1/deepsearch', method: 'POST', body: requestBody }),
+    body: JSON.stringify({ 
+      path: '/v1/deepsearch', 
+      method: 'POST', 
+      body: {
+        ...requestBody,
+        responseLength: requestBody.responseLength || 'medium', // Default to medium for faster responses
+      }
+    }),
+    signal: AbortSignal.timeout(20000), // 20 second timeout to prevent hanging
   });
 
   const elapsed = Date.now() - startTime;
@@ -498,11 +506,18 @@ export const financeTools = {
         return 'Configuration Error: Daytona API key not configured.';
       }
 
-      const daytona = new Daytona({
+      // Initialize Daytona client per documentation: https://www.daytona.io/docs/
+      // SDK default API URL is 'https://app.daytona.io/api' (not 'https://api.daytona.io')
+      // Explicitly set it to override DAYTONA_API_URL from .env.local if it's wrong
+      const daytonaConfig: any = { 
         apiKey: daytonaApiKey,
-        serverUrl: process.env.DAYTONA_API_URL,
-        target: (process.env.DAYTONA_TARGET as any) || undefined,
-      });
+        apiUrl: 'https://app.daytona.io/api', // SDK default - override incorrect .env.local value
+        target: process.env.DAYTONA_TARGET && process.env.DAYTONA_TARGET !== 'latest' 
+          ? process.env.DAYTONA_TARGET 
+          : 'us', // Default to 'us' region if not set or 'latest'
+      };
+      
+      const daytona = new Daytona(daytonaConfig);
 
       let sandbox: any | null = null;
       try {
@@ -546,7 +561,24 @@ ${execution.result || "(No output produced)"}
 **Execution Time**: ${executionTime}ms`;
 
       } catch (error: any) {
-        return `Error: Failed to execute Python code. ${error.message || 'Unknown error'}`;
+        const errorMessage = error.message || 'Unknown error';
+        const errorDetails = error.response?.data || error.status || error.statusCode || '';
+        console.error('[codeExecution] Daytona error:', {
+          message: errorMessage,
+          details: errorDetails,
+          apiUrl: process.env.DAYTONA_API_URL,
+          hasApiKey: !!daytonaApiKey,
+          hasTarget: !!process.env.DAYTONA_TARGET,
+        });
+        
+        if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
+          return `Error: Daytona API endpoint not found (404). Please check:
+- DAYTONA_API_URL is correct (should be https://api.daytona.io or your custom endpoint)
+- DAYTONA_API_KEY is valid
+- Daytona service is accessible`;
+        }
+        
+        return `Error: Failed to execute Python code. ${errorMessage}${errorDetails ? ` (${errorDetails})` : ''}`;
       } finally {
         if (sandbox) {
           try { await sandbox.delete(); } catch {}
@@ -605,6 +637,7 @@ ${execution.result || "(No output produced)"}
                   query,
                   search_type: 'proprietary',
                   max_num_results: 5,
+                  responseLength: 'medium', // Faster than default, still high quality (~50k chars per result)
                   included_sources: [
                     'valyu/valyu-stocks',
                     'valyu/valyu-sec-filings',
@@ -622,6 +655,7 @@ ${execution.result || "(No output produced)"}
                     'valyu/valyu-world-bank',
                   ],
                 }),
+                signal: AbortSignal.timeout(20000), // 20 second timeout to prevent hanging
               });
               if (!res.ok) {
                 const errBody = await res.text().catch(() => '');
@@ -651,6 +685,7 @@ ${execution.result || "(No output produced)"}
                 query,
                 search_type: 'proprietary',
                 max_num_results: 5,
+                responseLength: 'medium', // Faster than default, still high quality (~50k chars per result)
                 included_sources: [
                   'valyu/valyu-stocks',
                   'valyu/valyu-sec-filings',
@@ -693,7 +728,14 @@ ${execution.result || "(No output produced)"}
               const res = await fetch('https://api.valyu.ai/v1/deepsearch', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-                body: JSON.stringify({ query, search_type: 'proprietary', max_num_results: 5, included_sources: ['valyu/valyu-sec-filings'] }),
+                body: JSON.stringify({ 
+                  query, 
+                  search_type: 'proprietary', 
+                  max_num_results: 5,
+                  responseLength: 'medium', // Faster than default, still high quality (~50k chars per result)
+                  included_sources: ['valyu/valyu-sec-filings'] 
+                }),
+                signal: AbortSignal.timeout(20000), // 20 second timeout to prevent hanging
               });
               if (!res.ok) {
                 const errBody = await res.text().catch(() => '');
@@ -719,7 +761,13 @@ ${execution.result || "(No output produced)"}
           execute: async ({ query }, options) => {
             const valyuAccessToken = (options as any)?.experimental_context?.valyuAccessToken;
             try {
-              const response = await callValyuOAuthProxy({ query, search_type: 'proprietary', max_num_results: 5, included_sources: ['valyu/valyu-sec-filings'] }, valyuAccessToken);
+              const response = await callValyuOAuthProxy({ 
+                query, 
+                search_type: 'proprietary', 
+                max_num_results: 5,
+                responseLength: 'medium', // Faster than default, still high quality (~50k chars per result)
+                included_sources: ['valyu/valyu-sec-filings'] 
+              }, valyuAccessToken);
               await trackValyuCall('secSearch', query, response, true);
               return response?.results?.length ? response : `🔍 No SEC filings found for "${query}".`;
             } catch (error) {
