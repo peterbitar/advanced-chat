@@ -253,8 +253,10 @@ Provide clear, conversational responses. Use citations [1], [2], etc. when refer
     const fullResult = await result;
     
     // Use the full result text if available (more complete)
-    if (fullResult.text && fullResult.text.length > responseText.length) {
-      responseText = fullResult.text;
+    // fullResult.text is a Promise, so we need to await it
+    const fullText = await fullResult.text;
+    if (fullText && fullText.length > responseText.length) {
+      responseText = fullText;
     }
     
     console.log('[External Chat API] Response text length:', responseText.length);
