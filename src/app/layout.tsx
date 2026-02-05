@@ -166,7 +166,7 @@ export default function RootLayout({
                   <LocalModelStatus />
                   <MigrationBanner />
                   {children}
-                  <Analytics />
+                  {process.env.VERCEL_URL != null && process.env.VERCEL_URL !== '' && <Analytics />}
                 </OllamaProvider>
               </PostHogProvider>
             </AuthInitializer>

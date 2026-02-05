@@ -16,6 +16,8 @@ const isSelfHostedMode = process.env.NEXT_PUBLIC_APP_MODE === 'self-hosted';
 const VALYU_OAUTH_PROXY_URL = process.env.VALYU_OAUTH_PROXY_URL ||
   `${process.env.VALYU_APP_URL || process.env.NEXT_PUBLIC_VALYU_APP_URL || 'https://platform.valyu.ai'}/api/oauth/proxy`;
 
+const VALYU_REQUEST_TIMEOUT_MS = Number(process.env.VALYU_REQUEST_TIMEOUT_MS) || 40000;
+
 async function callValyuOAuthProxy(requestBody: Record<string, any>, valyuAccessToken: string): Promise<any> {
   const startTime = Date.now();
   console.log('[ValyuProxy] Request:', { query: requestBody.query, search_type: requestBody.search_type, sources: requestBody.included_sources });
@@ -31,7 +33,7 @@ async function callValyuOAuthProxy(requestBody: Record<string, any>, valyuAccess
         responseLength: requestBody.responseLength || 'medium', // Default to medium for faster responses
       }
     }),
-    signal: AbortSignal.timeout(20000), // 20 second timeout to prevent hanging
+    signal: AbortSignal.timeout(VALYU_REQUEST_TIMEOUT_MS),
   });
 
   const elapsed = Date.now() - startTime;
@@ -655,7 +657,7 @@ ${execution.result || "(No output produced)"}
                     'valyu/valyu-world-bank',
                   ],
                 }),
-                signal: AbortSignal.timeout(20000), // 20 second timeout to prevent hanging
+                signal: AbortSignal.timeout(VALYU_REQUEST_TIMEOUT_MS),
               });
               if (!res.ok) {
                 const errBody = await res.text().catch(() => '');
@@ -735,7 +737,7 @@ ${execution.result || "(No output produced)"}
                   responseLength: 'medium', // Faster than default, still high quality (~50k chars per result)
                   included_sources: ['valyu/valyu-sec-filings'] 
                 }),
-                signal: AbortSignal.timeout(20000), // 20 second timeout to prevent hanging
+                signal: AbortSignal.timeout(VALYU_REQUEST_TIMEOUT_MS),
               });
               if (!res.ok) {
                 const errBody = await res.text().catch(() => '');
