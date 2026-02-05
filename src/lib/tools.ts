@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { tool } from "ai";
 import { track } from "@vercel/analytics/server";
+
+function safeTrack(event: string, data?: Record<string, unknown>): Promise<void> {
+  return process.env.VERCEL_URL ? track(event, data) : Promise.resolve();
+}
 import { Daytona } from '@daytonaio/sdk';
 import { randomUUID } from 'crypto';
 import {
@@ -63,7 +67,7 @@ function formatSearchError(error: unknown, toolName: string): string {
 }
 
 async function trackValyuCall(toolType: string, query: string, response: any, usedOAuthProxy: boolean): Promise<void> {
-  await track('Valyu API Call', {
+  await safeTrack('Valyu API Call', {
     toolType,
     query,
     maxResults: 5,
@@ -268,7 +272,7 @@ export const financeTools = {
       }
 
       const totalDataPoints = dataSeries.reduce((sum, s) => sum + s.data.length, 0);
-      await track('Chart Created', {
+      await safeTrack('Chart Created', {
         chartType: type,
         title,
         seriesCount: dataSeries.length,
@@ -417,7 +421,7 @@ export const financeTools = {
           }
         }
 
-        await track('CSV Created', {
+        await safeTrack('CSV Created', {
           title,
           rowCount: rows.length,
           columnCount: headers.length,
@@ -527,7 +531,7 @@ export const financeTools = {
         const execution = await sandbox.process.codeRun(code);
         const executionTime = Date.now() - startTime;
 
-        await track('Python Code Executed', {
+        await safeTrack('Python Code Executed', {
           success: execution.exitCode === 0,
           codeLength: code.length,
           outputLength: execution.result?.length || 0,
