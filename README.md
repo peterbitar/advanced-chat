@@ -294,6 +294,41 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
+## Railway Deployment
+
+This application is configured to deploy on Railway. The Railway URL is: `https://advanced-chat-production.up.railway.app`
+
+### Railway Environment Variables
+
+Set these environment variables in your Railway project:
+
+**Required:**
+- `NEXT_PUBLIC_APP_URL` - Your Railway app URL (e.g., `https://advanced-chat-production.up.railway.app`)
+- `NEXT_PUBLIC_APP_MODE` - Set to `valyu` for production or `self-hosted` for local mode
+- `OPENAI_API_KEY` - Your OpenAI API key
+- `DAYTONA_API_KEY` - Your Daytona API key
+- `DAYTONA_API_URL` - Set to `https://app.daytona.io/api`
+- `DAYTONA_TARGET` - Set to `us` (or your target region)
+
+**For Valyu Mode (Production):**
+- `NEXT_PUBLIC_VALYU_SUPABASE_URL` - Valyu Supabase URL
+- `NEXT_PUBLIC_VALYU_CLIENT_ID` - Valyu OAuth client ID
+- `VALYU_CLIENT_SECRET` - Valyu OAuth client secret
+- `VALYU_APP_URL` - Valyu platform URL
+- `NEXT_PUBLIC_SUPABASE_URL` - Your app's Supabase URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anon key
+- `SUPABASE_SERVICE_ROLE_KEY` - Your Supabase service role key
+
+**Optional (for local LLM support):**
+- `OLLAMA_BASE_URL` - Only needed if using Ollama (default: `http://localhost:11434`)
+- `LMSTUDIO_BASE_URL` - Only needed if using LM Studio (default: `http://localhost:1234`)
+
+### Railway Build Notes
+
+- The Dockerfile uses `npm ci --legacy-peer-deps` to resolve peer dependency conflicts
+- Chromium is pre-installed in the Docker image for Puppeteer support
+- The app runs on port 3000 (Railway automatically maps this)
+
 ## Example Queries
 
 Try these powerful queries to see what Finance can do:

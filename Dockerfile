@@ -33,7 +33,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+# Use --legacy-peer-deps to resolve peer dependency conflicts
+RUN npm ci --legacy-peer-deps
 
 # Copy application code
 COPY . .
