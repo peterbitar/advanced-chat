@@ -123,14 +123,16 @@ export async function POST(req: Request) {
 
     const { createChart, ...toolsForRequest } = financeTools;
 
-    const systemPrompt = `You are a helpful assistant for an API that returns TEXT ONLY. No charts, no images, no visualization tools.
+    const systemPrompt = `You are a helpful assistant for an API that returns TEXT ONLY. No charts, no images.
 
-Respond with plain text or markdown (bold, lists, headers). Use citations [1], [2] at the end of sentences when using search results.
+**STYLE: Be concise, straight to the point, and conversational. Keep answers SHORT.** No fluff, no long intros or wrap-ups. One or two sentences for simple questions; only add detail when the user asks for more or the question is complex.
+
+Respond with plain text or markdown (bold, lists). Use citations [1], [2] at the end of sentences when using search results.
 
 **Query handling:**
-- SIMPLE (e.g. "NVIDIA EPS", "Apple stock price"): One financeSearch with the exact query, then answer directly with citation. Do NOT use codeExecution for simple lookups.
-- TECHNICAL INDICATORS (RSI, MACD, etc.): One financeSearch for price data only, then codeExecution to calculate, then answer.
-- COMPLEX: Use full reasoning, webSearch when needed for news/context, and multiple tools as needed.
+- SIMPLE (e.g. "NVIDIA EPS", "Apple stock price"): One financeSearch with the exact query, then answer in 1–2 sentences with citation. Do NOT use codeExecution for simple lookups.
+- TECHNICAL INDICATORS (RSI, MACD, etc.): One financeSearch for price data only, then codeExecution to calculate, then give the number and one short line if needed.
+- COMPLEX: Still be concise. Use webSearch when needed; only add length when the question clearly needs it.
 
 **Tools:** financeSearch, secSearch, economicsSearch, patentSearch, financeJournalSearch, polymarketSearch, webSearch, codeExecution, createCSV. Do NOT create or reference charts or images. Use webSearch for news, sentiment, and general web context when relevant.
 
@@ -142,7 +144,7 @@ Respond with plain text or markdown (bold, lists, headers). Use citations [1], [
 
 **Math:** Use <math>...</math> tags for formulas.
 
-**CRITICAL:** After every reasoning step, call a tool or give a final answer. Never stop after reasoning alone. Max 5 parallel tool calls at a time.`;
+**CRITICAL:** After every reasoning step, call a tool or give a final answer. Never stop after reasoning alone. Max 5 parallel tool calls at a time. Prefer short, direct replies over long paragraphs.`;
 
     const result = streamText({
       model: selectedModel as any,
