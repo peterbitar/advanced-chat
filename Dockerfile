@@ -32,8 +32,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (--legacy-peer-deps: @valyu/ai-sdk expects @ai-sdk/openai@^2, we use ^3)
+RUN npm ci --legacy-peer-deps
 
 # Copy application code
 COPY . .
