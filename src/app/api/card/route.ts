@@ -1,8 +1,7 @@
 /**
- * Generate one investor news card for a symbol.
- * POST body: { symbol: string }
- * Returns: { success: boolean, card?: { title, emoji, content }, error?: string }
- * Same format as deep-research card-from-finance. Call this on the finance app URL to get a card without calling deep-research.
+ * Card API:
+ * - GET  /api/card → { ok: true }
+ * - POST /api/card body: { symbol: string } → { success, card?: { title, emoji, content, ticker }, error? }
  */
 
 import { runSingleMessageCompletion } from '@/lib/external-completion';
@@ -28,10 +27,7 @@ JSON keys: "title", "emoji", "content". Example: {"title":"Bitcoin slid as risk-
 export const maxDuration = 300;
 
 export async function GET() {
-  return Response.json({
-    ok: true,
-    message: 'Card API. POST with body: { "symbol": "AAPL" } to generate a card.',
-  });
+  return Response.json({ ok: true });
 }
 
 export async function POST(req: Request) {
