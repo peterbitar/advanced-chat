@@ -11,8 +11,9 @@ export async function POST(req: Request) {
   try {
     // Clone request for body parsing (can only read body once)
     const body = await req.json();
-    const { messages, sessionId, valyuAccessToken }: { messages: FinanceUIMessage[], sessionId?: string, valyuAccessToken?: string } = body;
-
+    const { messages, sessionId, valyuAccessToken, responseFormat }: { messages: FinanceUIMessage[], sessionId?: string, valyuAccessToken?: string, responseFormat?: string } = body;
+    const useCardsFormat = responseFormat === 'cards' || req.headers.get('x-response-format') === 'cards';
+    
     // Validate messages
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return Response.json(
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
     // Use getUserFromRequest to support both cookie and header auth
     const { data: { user } } = await db.getUserFromRequest(req);
 
-    console.log("[Chat API] Request | Session:", sessionId, "| Mode:", isSelfHosted ? 'self-hosted' : 'valyu', "| User:", user?.id || 'anonymous', "| Messages:", messages.length);
+    console.log("[Chat API] Request | Session:", sessionId, "| Mode:", isSelfHosted ? 'self-hosted' : 'valyu', "| Format:", useCardsFormat ? 'cards' : 'chat', "| User:", user?.id || 'anonymous', "| Messages:", messages.length);
 
     if (!isSelfHosted && !valyuAccessToken) {
       return Response.json(
@@ -123,7 +124,26 @@ export async function POST(req: Request) {
 
     const { createChart, ...toolsForRequest } = financeTools;
 
-    const systemPrompt = `You are a helpful assistant for an API that returns TEXT ONLY. No charts, no images.
+    const systemPromptChat = `You are a financial data assistant for chat. Be conversational: tell the user what you're looking for and what you found as you go, then give the answer.
+
+**Conversational flow:** As you work, stream short updates in plain language. The user should see your progress, not a long silence.
+- Before calling a tool: in one short line, say what you're looking for (e.g. "Looking up Apple's current price.", "Checking recent headlines for context.").
+- After you get results: in one short line, say what you found and what you're doing next (e.g. "Got the price. Writing the answer.", "Found some data. Checking one more thing.", "Got what I need. Here's the answer.").
+- Then give your final answer with numbers. Do not add [1], [2], or any [n] at the end of sentences or paragraphs.
+
+**Goals:** Accurate numbers, clear answers. Use financeSearch (and other tools) to get data. Do NOT include citation markers like [1] or [2] in your response—omit them entirely.
+
+**Query handling:**
+- Simple (price, EPS, revenue, etc.): Say you're looking it up, call financeSearch, say what you found, then give the number. Do NOT use codeExecution for simple lookups. No [n] markers.
+- Technical indicators (RSI, MACD, etc.): Say you're fetching price data, call financeSearch, then codeExecution, then one line on the result and the answer.
+- "What's going on" / company news: Say what you're looking up (e.g. financials, then news), run tools, say what you found, then give a short factual summary with key numbers. No [1][2] or any [n].
+- Complex: Same pattern—brief "looking for X", then "found Y, doing Z next" or "here's the answer."
+
+**Citations:** Never output [1], [2], or any bracketed number [n] in your text. Use search results to support the answer but do not add citation markers.
+
+**Style:** Plain English, conversational. No charts or images. Use <math>...</math> for formulas. After every reasoning step, call a tool or answer. Max 5 parallel tool calls.`;
+
+    const systemPromptCards = `You are a helpful assistant for an API that returns TEXT ONLY. No charts, no images.
 
 **MARKDOWN:** Use a new line (return) between sections and after headings so markdown renders clearly. Put each section on its own line; use blank lines between blocks.
 
@@ -132,7 +152,9 @@ export async function POST(req: Request) {
 - Every update must connect to a broader narrative.
 - If there is no clear story shift, say so explicitly.
 
-**FORBIDDEN for stock/company/news queries:** Do NOT reply with "Here are the most recent major headlines" or a list of raw headlines with [1][2] citations. Do NOT offer to "filter by investor vs product news." You must always answer with the narrative format below.
+**NO CITATION MARKERS:** Never include [1], [2], or any [n] in your response—not at the end of sentences, not at the end of paragraphs. Omit them entirely. This is mandatory.
+
+**FORBIDDEN for stock/company/news queries:** Do NOT reply with "Here are the most recent major headlines" or a list of raw headlines. Do NOT offer to "filter by investor vs product news." You must always answer with the narrative format below.
 
 **OUTPUT FORMAT (MANDATORY when the user asks about a stock, company, "what's going on," news, or earnings):**
 Reply with exactly these four sections. No other structure.
@@ -155,7 +177,7 @@ Reply with exactly these four sections. No other structure.
 - What could break this narrative
 - One-liners only; add a metric where it sharpens the risk (e.g. "margin compresses below X%")
 
-**STYLE:** Plain English, no jargon. No raw headlines. Never include [1], [2], or any [n] citation markers in your response—omit them entirely. No dates mid-sentence. Assume the reader is an experienced investor. Synthesize everything into the four sections above—never list headlines. Use real numbers from your search results.
+**STYLE:** Plain English, no jargon. No raw headlines. No dates mid-sentence. Assume the reader is an experienced investor. Synthesize everything into the four sections above—never list headlines. Use real numbers from your search results. Do not put [1], [2], or any [n] at the end of paragraphs or anywhere in the text.
 
 **Query handling:**
 - SIMPLE (e.g. "NVIDIA EPS", "Apple stock price"): One financeSearch with the exact query, then answer in 1–2 sentences. Do NOT use codeExecution for simple lookups. Do not add [1] or [2] to the answer.
@@ -167,13 +189,17 @@ Reply with exactly these four sections. No other structure.
 
 **Calculate only when needed:** Use codeExecution ONLY when the user explicitly asks for a calculation, technical indicator (RSI, MACD, Bollinger, etc.), or computation that cannot be answered from search results alone. For simple data questions (price, EPS, revenue, etc.), use financeSearch only and answer from results.
 
-**Citations:** Do not include [1], [2], or any bracketed citation numbers in any response. Use your search results to support the answer but never output citation markers in the text.
+**Citations:** Never output [1], [2], or any [n] in your response—not at the end of sentences or paragraphs. Use your search results to support the answer but do not add any citation markers in the text.
 
 **Code execution (when used):** Include print() statements. No visualization libraries in sandbox.
 
 **Math:** Use <math>...</math> tags for formulas.
 
 **CRITICAL:** After every reasoning step, call a tool or give a final answer. Never stop after reasoning alone. Max 5 parallel tool calls at a time. Prefer short, direct replies over long paragraphs.`;
+
+    const systemPrompt = useCardsFormat ? systemPromptCards : systemPromptChat;
+
+    const stepLog: Array<{ phase: 'start' | 'done'; toolName: string; detail: string; nextStep?: string; ts: number }> = [];
 
     const result = streamText({
       model: selectedModel as any,
@@ -185,6 +211,7 @@ Reply with exactly these four sections. No other structure.
         userId: user?.id,
         sessionId,
         valyuAccessToken, // Pass Valyu OAuth token for API proxy calls
+        stepLog,
       },
       providerOptions,
       system: systemPrompt,
@@ -213,6 +240,9 @@ Reply with exactly these four sections. No other structure.
             }
 
             const isLastAssistant = message.role === 'assistant' && index === allMessages.length - 1;
+            if (isLastAssistant && stepLog.length > 0) {
+              contentToSave = [...contentToSave, { type: 'step-log', steps: [...stepLog] }];
+            }
             return {
               id: UUID_REGEX.test(message.id || '') ? message.id : randomUUID(),
               role: message.role,

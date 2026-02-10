@@ -15,6 +15,7 @@ import {
   patentSearch as valyuPatentSearch,
 } from '@valyu/ai-sdk';
 import * as db from '@/lib/db';
+import { getValuation } from '@/tools/valuationExtractor';
 
 const isSelfHostedMode = process.env.NEXT_PUBLIC_APP_MODE === 'self-hosted';
 const VALYU_OAUTH_PROXY_URL = process.env.VALYU_OAUTH_PROXY_URL ||
@@ -76,6 +77,40 @@ async function trackValyuCall(toolType: string, query: string, response: any, us
     cost: response?.total_deduction_dollars || null,
     txId: response?.tx_id || null
   });
+}
+
+/**
+ * Log current step and next step for chat so the user isn’t left waiting without context.
+ * Same “result + next step and why” is shown in the UI (see chat-interface latestStepWhy).
+ *
+ * Example server log for "What is Apple's stock price?":
+ *   [Chat] Step: financeSearch("What is Apple's stock price?"). Why: Fetching financial data for your answer.
+ *   [financeSearch] Query: What is Apple's stock price?
+ *   [financeSearch] Success: { results: 3, elapsed: '2847ms' }
+ *   [Chat] Result: financeSearch returned 3 item(s). Next: Model will use this to write the answer.
+ *
+ * Example UI while waiting:
+ *   Finance Search
+ *   What is Apple's stock price?
+ *   Next: Fetching financial data for your answer.
+ */
+function logChatStep(
+  phase: 'start' | 'done',
+  toolName: string,
+  detail: string,
+  nextStep?: string,
+  options?: { experimental_context?: { stepLog?: Array<{ phase: 'start' | 'done'; toolName: string; detail: string; nextStep?: string; ts: number }> } }
+): void {
+  const why = nextStep ?? (phase === 'start' ? 'Getting data for your answer.' : 'Model will use this to continue.');
+  if (phase === 'start') {
+    console.log(`[Chat] Step: ${toolName}(${detail}). Why: ${why}`);
+  } else {
+    console.log(`[Chat] Result: ${toolName} ${detail}. Next: ${why}`);
+  }
+  const stepLog = options?.experimental_context?.stepLog;
+  if (Array.isArray(stepLog)) {
+    stepLog.push({ phase, toolName, detail, nextStep: why, ts: Date.now() });
+  }
 }
 
 
@@ -593,6 +628,20 @@ ${execution.result || "(No output produced)"}
     },
   }),
 
+  getValuation: tool({
+    description: "Fetch real-time valuation data for a stock from Yahoo Finance: price, P/E, PEG, EPS, forward P/E, market cap. No API key required. Use the exact ticker symbol (e.g. AAPL, MSFT, GOOGL).",
+    inputSchema: z.object({
+      symbol: z.string().min(1).max(10).describe("Stock ticker symbol (e.g. AAPL, MSFT)"),
+    }),
+    execute: async ({ symbol }, options) => {
+      const ticker = symbol.toUpperCase().trim();
+      logChatStep('start', 'getValuation', ticker, 'Fetching valuation data from Yahoo Finance.', options);
+      const data = await getValuation(ticker);
+      logChatStep('done', 'getValuation', `price=${data.price ?? 'N/A'}`, 'Model will use this to continue.', options);
+      return data;
+    },
+  }),
+
   ...(isSelfHostedMode
     ? { webSearch: valyuWebSearch({ maxNumResults: 5 }) }
     : {
@@ -605,6 +654,8 @@ ${execution.result || "(No output produced)"}
           }),
           execute: async ({ query, includedSources, excludedSources }, options) => {
             const valyuAccessToken = (options as any)?.experimental_context?.valyuAccessToken;
+            const inputPreview = query.length > 60 ? `${query.slice(0, 60)}…` : query;
+            logChatStep('start', 'webSearch', `"${inputPreview}"`, 'Fetching web results for context.', options);
             try {
               const requestBody: any = { query, search_type: 'all', max_num_results: 5 };
               if (includedSources && includedSources.length > 0) {
@@ -614,9 +665,12 @@ ${execution.result || "(No output produced)"}
                 requestBody.excluded_sources = excludedSources;
               }
               const response = await callValyuOAuthProxy(requestBody, valyuAccessToken);
+              const count = response?.results?.length ?? 0;
+              logChatStep('done', 'webSearch', `returned ${count} item(s)`, 'Model will use this to write the answer.', options);
               await trackValyuCall('webSearch', query, response, true);
               return response?.results?.length ? response : `🔍 No web results found for "${query}".`;
             } catch (error) {
+              logChatStep('done', 'webSearch', 'failed', 'Model may retry or answer from context.', options);
               return formatSearchError(error, 'webSearch');
             }
           },
@@ -630,8 +684,10 @@ ${execution.result || "(No output produced)"}
           inputSchema: z.object({
             query: z.string().min(1).max(500).describe("Natural language query (e.g., 'Apple stock price Q1-Q3 2020', 'Tesla revenue last 4 quarters')"),
           }),
-          execute: async ({ query }) => {
+          execute: async ({ query }, options) => {
             const startTime = Date.now();
+            const inputPreview = query.length > 60 ? `${query.slice(0, 60)}…` : query;
+            logChatStep('start', 'financeSearch', `"${inputPreview}"`, 'Fetching financial data for your answer.', options);
             console.log('[financeSearch] Query:', query);
             try {
               const apiKey = process.env.VALYU_API_KEY;
@@ -669,10 +725,13 @@ ${execution.result || "(No output produced)"}
                 throw new Error(`API error: ${res.status} - ${errBody}`);
               }
               const response = await res.json();
-              console.log('[financeSearch] Success:', { results: response?.results?.length || 0, elapsed: `${Date.now() - startTime}ms` });
+              const count = response?.results?.length ?? 0;
+              logChatStep('done', 'financeSearch', `returned ${count} item(s)`, 'Model will use this to write the answer.', options);
+              console.log('[financeSearch] Success:', { results: count, elapsed: `${Date.now() - startTime}ms` });
               await trackValyuCall('financeSearch', query, response, false);
               return response?.results?.length ? response : `🔍 No financial data found for "${query}".`;
             } catch (error) {
+              logChatStep('done', 'financeSearch', 'failed', 'Model may retry or answer from context.', options);
               return formatSearchError(error, 'financeSearch');
             }
           },
@@ -686,6 +745,8 @@ ${execution.result || "(No output produced)"}
           }),
           execute: async ({ query }, options) => {
             const valyuAccessToken = (options as any)?.experimental_context?.valyuAccessToken;
+            const inputPreview = query.length > 60 ? `${query.slice(0, 60)}…` : query;
+            logChatStep('start', 'financeSearch', `"${inputPreview}"`, 'Fetching financial data for your answer.', options);
             try {
               const response = await callValyuOAuthProxy({
                 query,
@@ -709,9 +770,12 @@ ${execution.result || "(No output produced)"}
                   'valyu/valyu-world-bank',
                 ],
               }, valyuAccessToken);
+              const count = response?.results?.length ?? 0;
+              logChatStep('done', 'financeSearch', `returned ${count} item(s)`, 'Model will use this to write the answer.', options);
               await trackValyuCall('financeSearch', query, response, true);
               return response?.results?.length ? response : `🔍 No financial data found for "${query}".`;
             } catch (error) {
+              logChatStep('done', 'financeSearch', 'failed', 'Model may retry or answer from context.', options);
               return formatSearchError(error, 'financeSearch');
             }
           },

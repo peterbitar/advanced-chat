@@ -33,9 +33,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-# Use npm install with --legacy-peer-deps to resolve peer dependency conflicts
-# Note: Using npm install instead of npm ci because lock file may be out of sync
-RUN npm install --legacy-peer-deps
+RUN npm ci
 
 # Copy application code
 COPY . .

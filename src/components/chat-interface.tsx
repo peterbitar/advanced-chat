@@ -640,6 +640,50 @@ function groupMessageParts(parts: any[]): any[] {
   return groupedParts;
 }
 
+type StepLogEntry = { phase: string; toolName?: string; detail?: string; nextStep?: string; ts: number; elapsedMs?: number; totalMs?: number };
+
+function StepLogBlock({ steps }: { steps: StepLogEntry[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const regularSteps = steps.filter((s) => s.phase !== 'summary');
+  const summary = steps.find((s) => s.phase === 'summary' && 'totalMs' in s) as { totalMs: number } | undefined;
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-muted/30 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+      >
+        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+        <span>Request log</span>
+        <span className="text-muted-foreground font-normal">({regularSteps.length} step{regularSteps.length !== 1 ? "s" : ""})</span>
+        {summary != null && (
+          <span className="text-muted-foreground font-normal"> · Total {(summary.totalMs / 1000).toFixed(1)}s</span>
+        )}
+        <ChevronDown className={`h-4 w-4 ml-auto text-muted-foreground shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
+      </button>
+      {expanded && (
+        <div className="px-3 pb-3 pt-0">
+          <pre className="text-xs text-muted-foreground bg-muted/50 rounded p-3 overflow-x-auto whitespace-pre-wrap font-sans">
+            {steps.map((s, i) => {
+              if (s.phase === 'summary' && s.totalMs != null) {
+                return <span key={i}>[Chat] Total request: {(s.totalMs / 1000).toFixed(2)}s ({s.totalMs}ms)\n</span>;
+              }
+              const elapsedStr = s.elapsedMs != null ? ` [${(s.elapsedMs / 1000).toFixed(2)}s]` : '';
+              return (
+                <span key={i}>
+                  {s.phase === "start"
+                    ? `[Chat] Step: ${s.toolName}(${s.detail}). Why: ${s.nextStep ?? ""}\n`
+                    : `[Chat] Result: ${s.toolName} ${s.detail}. Next: ${s.nextStep ?? ""}${elapsedStr}\n`}
+                </span>
+              );
+            })}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Helper to parse and extract CSV/chart references from markdown
 const parseSpecialReferences = (text: string): Array<{ type: 'text' | 'csv' | 'chart', content: string, id?: string }> => {
   const segments: Array<{ type: 'text' | 'csv' | 'chart', content: string, id?: string }> = [];
@@ -1889,6 +1933,7 @@ export function ChatInterface({
   } | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [liveProcessingTime, setLiveProcessingTime] = useState<number>(0);
+  const [selectedAgent, setSelectedAgent] = useState<'' | 'chat' | 'cards' | 'finance-gpt-copy'>('');
 
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -2084,11 +2129,12 @@ export function ChatInterface({
             messages,
             sessionId: sessionIdRef.current,
             valyuAccessToken, // Pass Valyu token for API proxy
+            ...(selectedAgent ? { responseFormat: selectedAgent } : {}),
           },
           headers,
         };
       }
-    }), [selectedModel, selectedProvider, user, getValidValyuAccessToken]
+    }), [selectedModel, selectedProvider, user, getValidValyuAccessToken, selectedAgent]
   );
 
   const {
@@ -3032,6 +3078,20 @@ export function ChatInterface({
                 </div>
               )}
 
+              <div className="flex items-center gap-2 mb-2">
+                <label htmlFor="agent-select" className="text-xs text-muted-foreground whitespace-nowrap">Agent:</label>
+                <select
+                  id="agent-select"
+                  value={selectedAgent}
+                  onChange={(e) => setSelectedAgent((e.target.value as '' | 'chat' | 'cards' | 'finance-gpt-copy') || '')}
+                  className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-muted-foreground"
+                >
+                  <option value="">Chat (default)</option>
+                  <option value="finance-gpt-copy">FinanceGPTCopy</option>
+                  <option value="cards">Cards</option>
+                </select>
+              </div>
+
               <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
                 <div className="relative flex items-end">
                   <Textarea
@@ -3220,6 +3280,7 @@ export function ChatInterface({
                         const latestStep = groupedParts[groupedParts.length - 1];
                         let latestStepTitle = "";
                         let latestStepSubtitle = "";
+                        let latestStepWhy = "";
                         let latestStepIcon = <Brain className="h-5 w-5" />;
 
                         if (latestStep) {
@@ -3256,6 +3317,20 @@ export function ChatInterface({
                           } else if (latestStep.part?.type?.startsWith("tool-")) {
                             // Get tool name and details
                             const toolType = latestStep.part.type.replace("tool-", "");
+                            // Why we're doing this step (so the user isn't left only waiting)
+                            const stepWhy: Record<string, string> = {
+                              financeSearch: "Fetching financial data for your answer.",
+                              webSearch: "Fetching web results for context.",
+                              financeJournalSearch: "Looking up academic sources.",
+                              secSearch: "Searching SEC filings.",
+                              economicsSearch: "Fetching economic data.",
+                              patentSearch: "Searching patent databases.",
+                              polymarketSearch: "Fetching prediction market data.",
+                              codeExecution: "Running calculation.",
+                              createChart: "Building the chart.",
+                              createCSV: "Building the table.",
+                            };
+                            latestStepWhy = stepWhy[toolType] || "Getting data for your answer.";
 
                             if (toolType === "financeSearch") {
                               latestStepTitle = "Finance Search";
@@ -3310,10 +3385,10 @@ export function ChatInterface({
                         const displayParts = isTraceExpanded
                           ? groupedParts
                           : groupedParts.filter(g => {
-                              // Only show text parts when collapsed
+                              // When collapsed: show text and step-log (so user can review log without expanding full trace)
                               if (g.type === "reasoning-group") return false;
                               if (g.part?.type?.startsWith("tool-")) return false;
-                              return g.part?.type === "text";
+                              return g.part?.type === "text" || g.part?.type === "step-log";
                             });
 
                         return (
@@ -3363,6 +3438,11 @@ export function ChatInterface({
                                       {latestStepSubtitle && (
                                         <div className="text-sm text-muted-foreground line-clamp-2">
                                           {latestStepSubtitle}
+                                        </div>
+                                      )}
+                                      {latestStepWhy && (
+                                        <div className="text-xs text-muted-foreground/90 mt-1">
+                                          Next: {latestStepWhy}
                                         </div>
                                       )}
                                     </>
@@ -3465,6 +3545,15 @@ export function ChatInterface({
                               // Skip individual reasoning parts as they're handled in groups
                               case "reasoning":
                                 return null;
+
+                              // Request log (step log from chat so user can review what ran)
+                              case "step-log": {
+                                const steps = (part as { type: "step-log"; steps: Array<{ phase: string; toolName: string; detail: string; nextStep?: string; ts: number }> }).steps;
+                                if (!steps?.length) return null;
+                                return (
+                                  <StepLogBlock key={`step-log-${index}`} steps={steps} />
+                                );
+                              }
 
                               // Python Executor Tool
                               case "tool-codeExecution": {
@@ -3898,6 +3987,20 @@ export function ChatInterface({
                 <MetricsPills metrics={cumulativeMetrics} />
               </div>
             )}
+
+            <div className="flex items-center gap-2 mb-2">
+              <label htmlFor="agent-select-mobile" className="text-xs text-muted-foreground whitespace-nowrap">Agent:</label>
+              <select
+                id="agent-select-mobile"
+                value={selectedAgent}
+                onChange={(e) => setSelectedAgent((e.target.value as '' | 'chat' | 'cards' | 'finance-gpt-copy') || '')}
+                className="rounded-md border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-muted-foreground"
+              >
+                <option value="">Chat (default)</option>
+                <option value="finance-gpt-copy">FinanceGPTCopy</option>
+                <option value="cards">Cards</option>
+              </select>
+            </div>
 
             <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
               <div className="bg-card rounded-2xl shadow-sm border border-border px-4 py-2.5 relative flex items-center">
