@@ -94,12 +94,14 @@ async function trackValyuCall(toolType: string, query: string, response: any, us
  *   What is Apple's stock price?
  *   Next: Fetching financial data for your answer.
  */
+type StepLogEntry = { phase: 'start' | 'done'; toolName: string; detail: string; nextStep?: string; ts: number };
+
 function logChatStep(
   phase: 'start' | 'done',
   toolName: string,
   detail: string,
   nextStep?: string,
-  options?: { experimental_context?: { stepLog?: Array<{ phase: 'start' | 'done'; toolName: string; detail: string; nextStep?: string; ts: number }> } }
+  options?: { experimental_context?: unknown }
 ): void {
   const why = nextStep ?? (phase === 'start' ? 'Getting data for your answer.' : 'Model will use this to continue.');
   if (phase === 'start') {
@@ -107,7 +109,10 @@ function logChatStep(
   } else {
     console.log(`[Chat] Result: ${toolName} ${detail}. Next: ${why}`);
   }
-  const stepLog = options?.experimental_context?.stepLog;
+  const ctx = options?.experimental_context;
+  const stepLog = ctx && typeof ctx === 'object' && ctx !== null && 'stepLog' in ctx && Array.isArray((ctx as { stepLog?: unknown }).stepLog)
+    ? (ctx as { stepLog: StepLogEntry[] }).stepLog
+    : undefined;
   if (Array.isArray(stepLog)) {
     stepLog.push({ phase, toolName, detail, nextStep: why, ts: Date.now() });
   }
