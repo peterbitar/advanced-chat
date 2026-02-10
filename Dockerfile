@@ -24,24 +24,27 @@ RUN apt-get update && apt-get install -y \
 # Set Chromium path for Puppeteer
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Don't download Chromium during npm install (we installed it above)
+# Don't download Chromium during install (we installed it above)
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Install pnpm (project uses pnpm; package-lock.json is out of sync with package.json)
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Install dependencies (--legacy-peer-deps: @valyu/ai-sdk expects @ai-sdk/openai@^2, we use ^3)
-RUN npm ci --legacy-peer-deps
+# Copy package files (use pnpm lockfile so install matches local dev)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
 
 # Copy application code
 COPY . .
 
 # Build Next.js application
-RUN npm run build
+RUN pnpm run build
 
 EXPOSE 3000
 
 # Start the application
-CMD ["npm", "start"]
+CMD ["pnpm", "start"]
